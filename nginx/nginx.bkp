@@ -1,0 +1,36 @@
+events {
+    worker_connections 1024;
+}
+
+http {
+    upstream dashboard {
+        least_conn;
+        server dashboard-ui:9000 weight=1 max_fails=1 fail_timeout=10s;
+        server dashboard-ui-2:9000 weight=1 max_fails=1 fail_timeout=10s;
+        keepalive 32;
+    }
+
+    server {
+        listen 80;
+
+        location /health {
+            access_log off;
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
+
+        location / {
+            proxy_pass http://dashboard;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 10s;
+            proxy_send_timeout 10s;
+            proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+            proxy_next_upstream_timeout 5s;
+            proxy_next_upstream_tries 2;
+        }
+    }
+}

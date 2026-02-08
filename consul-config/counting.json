@@ -1,0 +1,14 @@
+{
+  "service": {
+    "name": "counting",
+    "id": "counting-1",
+    "port": 9001,
+    "check": {
+      "id": "counting-1",
+      "http": "http://172.18.0.2:9001/health",
+      "method": "GET",
+      "interval": "1s",
+      "timeout": "1s"
+    }
+  }
+}

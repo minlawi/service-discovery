@@ -1,0 +1,15 @@
+{
+  "service": {
+    "name": "dashboard",
+    "id": "dashboard-2",
+    "address": "172.18.0.5",
+    "port": 9000,
+    "check": {
+      "id": "dashboard-2",
+      "http": "http://172.18.0.5:9000",
+      "method": "GET",
+      "interval": "1s",
+      "timeout": "1s"
+    }
+  }
+}
