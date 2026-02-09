@@ -1,0 +1,186 @@
+# =============================================================================
+# CONSUL SERVICE DISCOVERY DEMO - DOCKER COMPOSE
+# =============================================================================
+# This docker-compose file sets up a microservices architecture with:
+# - Consul for service discovery and DNS
+# - A counting API backend service
+# - Two dashboard frontend instances (for load balancing demo)
+# - Nginx as a reverse proxy using Consul DNS for service discovery
+# =============================================================================
+
+# version: '3.8'
+
+services:
+  # ===========================================================================
+  # STEP 1: CONSUL - Service Discovery & DNS Server
+  # ===========================================================================
+  # Consul is the core of this demo. It provides:
+  # - Service registration: Services register themselves with Consul
+  # - Service discovery: Services can find each other via DNS queries
+  # - Health checking: Consul monitors service health
+  # - UI: Web interface to view registered services
+  # ===========================================================================
+  consul:
+    image: hashicorp/consul:latest
+    container_name: consul
+    hostname: consul
+    ports:
+      - "8500:8500"       # Consul UI and HTTP API - Access at http://localhost:8500
+      - "8600:8600/tcp"   # DNS interface (TCP) - Used for service discovery
+      - "8600:8600/udp"   # DNS interface (UDP) - Used for service discovery
+    volumes:
+      # Mount the consul-config directory containing service registration files:
+      # - counting.json: Registers counting-api service
+      # - dashboard.json: Registers dashboard-ui service
+      # - nginx.json: Registers nginx service
+      - ./consul-config:/consul-config
+    networks:
+      ace:
+        # Static IP is important! Nginx uses this IP (172.18.0.6:8600) as DNS resolver
+        ipv4_address: 172.18.0.6
+    command: >
+      consul agent -dev -server -ui
+      -client=0.0.0.0
+      -config-dir=/consul-config
+      -log-level=info
+    # Command explanation:
+    # - agent: Run Consul agent
+    # - -dev: Development mode (data not persisted)
+    # - -server: Run as server (not just client)
+    # - -ui: Enable web UI
+    # - -client=0.0.0.0: Accept connections from any IP
+    # - -config-dir: Load service configs from this directory
+    # - -log-level=info: Set logging verbosity
+
+  # ===========================================================================
+  # STEP 2: COUNTING-API - Backend Service
+  # ===========================================================================
+  # A simple backend API that returns a counter value.
+  # This service is registered in Consul as "counting.service.consul"
+  # ===========================================================================
+  counting-api:
+    image: nyanlintun/counting:latest
+    container_name: counting-api
+    environment:
+      - PORT=9001         # The port the service listens on
+    # No ports exposed - only accessible within Docker network
+    networks:
+      ace:
+        # This IP must match the address in consul-config/counting.json
+        # for health checks to work correctly
+        ipv4_address: 172.18.0.2
+    depends_on:
+      - consul            # Start after Consul is running
+
+  # ===========================================================================
+  # STEP 3: DASHBOARD-UI (Primary) - Frontend Service
+  # ===========================================================================
+  # Frontend application that displays data from the counting-api.
+  # Registered in Consul as "dashboard.service.consul"
+  # ===========================================================================
+  dashboard-ui:
+    image: nyanlintun/dashboard:latest
+    container_name: dashboard-ui
+    environment:
+      - PORT=9000                                    # Port the dashboard listens on
+      - COUNTING_API_URL=http://counting-api:9001   # URL to fetch counter data
+    # No ports exposed - access via Nginx at http://localhost:8080
+    networks:
+      ace:
+        # This IP must match consul-config/dashboard.json for health checks
+        ipv4_address: 172.18.0.3
+    depends_on:
+      - consul
+      - counting-api      # Needs counting-api to be available
+
+  # ===========================================================================
+  # STEP 4: DASHBOARD-UI-2 (Secondary) - Second Frontend Instance
+  # ===========================================================================
+  # Second instance of the dashboard for demonstrating:
+  # - Load balancing via Nginx
+  # - Consul DNS round-robin resolution
+  # Both instances register as "dashboard" service in Consul
+  # ===========================================================================
+  dashboard-ui-2:
+    image: nyanlintun/dashboard:latest
+    container_name: dashboard-ui-2
+    environment:
+      - PORT=9000                                    # Same internal port
+      - COUNTING_API_URL=http://counting-api:9001
+    # No ports exposed - access via Nginx at http://localhost:8080
+    networks:
+      ace:
+        ipv4_address: 172.18.0.5
+    depends_on:
+      - consul
+      - counting-api
+
+  # ===========================================================================
+  # STEP 5: NGINX - Reverse Proxy with Consul DNS
+  # ===========================================================================
+  # Nginx acts as a load balancer/reverse proxy that:
+  # - Receives requests on port 8080
+  # - Queries Consul DNS to find "dashboard.service.consul"
+  # - Forwards requests to discovered dashboard instances
+  # 
+  # The nginx.conf uses Consul as DNS resolver (172.18.0.6:8600)
+  # to dynamically discover backend services
+  # ===========================================================================
+  dashboard-nginx:
+    image: nginx:latest
+    container_name: dashboard-nginx
+    ports:
+      - "8080:80"         # Access the load-balanced dashboard at http://localhost:8080
+    volumes:
+      # Mount nginx configuration file (read-only)
+      # This config sets Consul as DNS resolver and proxies to dashboard.service.consul
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      ace:
+        # This IP must match consul-config/nginx.json for health checks
+        ipv4_address: 172.18.0.4
+    depends_on:
+      - consul
+      - dashboard-ui
+      - dashboard-ui-2    # Wait for both dashboard instances
+    command: nginx -g 'daemon off;'
+    # Run nginx in foreground (required for Docker)
+
+# =============================================================================
+# NETWORK CONFIGURATION
+# =============================================================================
+# Custom bridge network with static IP assignments.
+# This allows:
+# - Predictable IP addresses for Consul service registration
+# - Nginx to use Consul (172.18.0.6) as DNS resolver
+# - Health checks to work with hardcoded IPs in consul-config/*.json
+# =============================================================================
+networks:
+  ace:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
+          gateway: 172.18.0.1
+
+# =============================================================================
+# HOW TO USE
+# =============================================================================
+# 1. Start all services:
+#    docker compose up -d
+#
+# 2. Access the services:
+#    - Consul UI:        http://localhost:8500
+#    - Nginx (LB):       http://localhost:8080  (load balances to dashboard instances)
+#    
+#    Internal only (not exposed to host):
+#    - counting-api:     internal port 9001
+#    - dashboard-ui:     internal port 9000
+#    - dashboard-ui-2:   internal port 9000
+#
+# 3. View logs:
+#    docker compose logs -f
+#
+# 4. Stop all services:
+#    docker compose down
+# =============================================================================
