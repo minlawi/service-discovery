@@ -24,10 +24,10 @@ services:
     image: hashicorp/consul:latest
     container_name: consul
     hostname: consul
-    ports:
-      - "8500:8500"       # Consul UI and HTTP API - Access at http://localhost:8500
-      - "8600:8600/tcp"   # DNS interface (TCP) - Used for service discovery
-      - "8600:8600/udp"   # DNS interface (UDP) - Used for service discovery
+    # ports:
+    #   # - "8500:8500"       # Consul UI and HTTP API - Access at http://localhost:8500
+    #   # - "8600:8600/tcp"   # DNS interface (TCP) - Used for service discovery
+    #   # - "8600:8600/udp"   # DNS interface (UDP) - Used for service discovery
     volumes:
       # Mount the consul-config directory containing service registration files:
       # - counting.json: Registers counting-api service
