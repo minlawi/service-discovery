@@ -52,7 +52,6 @@ nginx -g 'daemon off;'
 sudo mv /etc/systemd/resolved.conf.d/consul.conf /etc/systemd/resolved.conf.d/consul.conf.disabled
 sudo systemctl restart systemd-resolved
 
-
 # Enabled consul.conf
 sudo mv /etc/systemd/resolved.conf.d/consul.conf.disabled /etc/systemd/resolved.conf.d/consul.conf
 sudo systemctl restart systemd-resolved
